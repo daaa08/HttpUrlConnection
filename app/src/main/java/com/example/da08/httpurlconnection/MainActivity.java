@@ -3,6 +3,7 @@ package com.example.da08.httpurlconnection;
 import android.os.Bundle;
 import android.support.v4.app.FragmentManager;
 import android.support.v7.app.AppCompatActivity;
+import android.widget.AbsListView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -34,8 +35,9 @@ public class MainActivity extends AppCompatActivity implements TaskInterface, On
     static final String URL_MID    = "/json/SearchPublicToiletPOIService/";  // start와 end를 제외한 서비스명까지
     public static final int OFF_SET = 10;  // 한 페이지에 불러오는 데이터 수
 
-    int pageBegin = 1;
-    int pageEnd = 10;
+    int page = 0;
+//    int pageBegin = 1;
+//    int pageEnd = 10;
 
 
     ListView listView;
@@ -53,32 +55,80 @@ public class MainActivity extends AppCompatActivity implements TaskInterface, On
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        listView = (ListView)findViewById(R.id.listView);
-        textView = (TextView)findViewById(R.id.textView);
+        setViews();
+        setListener();
+        setMap();
+
+    }
+    private void setViews(){
+        listView = (ListView) findViewById(R.id.listView);
+        textView = (TextView) findViewById(R.id.textView);
 
         // data - 위에서 공간 할당
         adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1,datas);
         listView.setAdapter(adapter);  // adapter 연결
+    }
 
+    private void setListener(){
+        // 스크롤의 상태값을 체크해주는 리스너
+        listView.setOnScrollListener(scrollListener);
+    }
 
+    private void setMap(){
         // map setting
         FragmentManager manager = getSupportFragmentManager();  // map 불러오기
-        SupportMapFragment mapFragment = (SupportMapFragment)manager.findFragmentById(R.id.mapView);
-
-        // 로드되면 onReady를 호출하도록
+        SupportMapFragment mapFragment = (SupportMapFragment) manager.findFragmentById(R.id.mapView);
+        // 로드되면 onReady 호출하도록
         mapFragment.getMapAsync(this);
-
-
-
     }
 
-    private void setPage(int page){   // setPage가 어디서 호출될지 모르기때문에 함수로
-        pageBegin = pageEnd - OFF_SET +1;
+    // 리스트에 마지막 item이 보이는지 여부
+     Boolean lastItem = false;
+    AbsListView.OnScrollListener scrollListener = new AbsListView.OnScrollListener() {
+        @Override
+        public void onScrollStateChanged(AbsListView view, int scrollState) {
+            if(scrollState == AbsListView.OnScrollListener.SCROLL_STATE_IDLE
+                    && lastItem){
 
-        pageEnd = page * OFF_SET;   // 1 *10 = 10, 2* 10 = 20...
+                loadPage();
+            }
+        }
+
+            /*
+             firstVisibleItem : 현재 화면에 보여지는 첫번째 아이템의 번호
+             visibleItemCount : 현재 화면에 보여지는 아이템의 개수
+             totalItemCount   : 리스트에 담겨있는 전체 아이템의 개수
+             */
+        @Override
+        public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
+
+            if(totalItemCount <= firstVisibleItem + visibleItemCount){
+                lastItem = true;
+            }else{
+                lastItem = false;
+            }
+        }
+    };
+
+    private void loadPage(){
+        nextPage();
+        setUrl();
+        Remote.newTask(MainActivity.this);
+
+    }
+//        pageBegin = pageEnd - OFF_SET +1;
+//        pageEnd = page * OFF_SET;   // 1 *10 = 10, 2* 10 = 20...
+//    }
+
+
+    private void nextPage(){
+        page = page + 1;
     }
 
-    private void setUrl(int begin , int end){   // Remote에서 getUrl을 호출하여 사용
+    private void setUrl(){   // Remote에서 getUrl을 호출하여 사용
+
+        int end = page * OFF_SET;
+        int begin = end - OFF_SET + 1;
 
         /*
         // String 연산
@@ -107,38 +157,61 @@ public class MainActivity extends AppCompatActivity implements TaskInterface, On
     @Override
     public void postExecute(String jsonString){
 
-        Gson gson = new Gson(); // gson : jsonString을 Domain 폴더 파일들에 맞는 객체로 자동 변환해주는 툴
+        MyPojo data = convertJson(jsonString);
 
-        // 1 json String을 class로 변환
-        MyPojo mp = gson.fromJson(jsonString, MyPojo.class); // json은 String 형태로 날아옴
+        int totalCount = data.getSearchPublicToiletPOIService().getList_total_count();
+        Row items[] = data.getSearchPublicToiletPOIService().getRow();
 
-        // 2 class를 json String으로 변환 - 총 개수 화면에 세팅
-        textView.setText("총 개수" + mp.getSearchPublicToiletPOIService().getList_total_count());
-        // 건물의 이름을  listView에 세팅
-        Row rows[] = mp.getSearchPublicToiletPOIService().getRow(); // json데이터에서 Row파일에 건물 이름이 있음
+        setItemCount(totalCount);
 
+        addDatas(items);
+
+        addMarkers(items);
+
+        LatLng sinsa = new LatLng(37.516066, 127.019361);
+        moveMapPosition(sinsa);
+
+        // 그리고 adapter 를 갱신해준다.
+        adapter.notifyDataSetChanged();
+    }
+
+    // 지도 이동
+    private void moveMapPosition(LatLng position){
+        myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(position, 10));
+    }
+
+    // datas 에 데이터 더하기
+    private void addDatas(Row[] items){
+        for(Row item : items){
+            datas.add(item.getFNAME());
+        }
+    }
+
+
+    // 지도에 마커 생성
+    private void addMarkers(Row[] items){
         // 네트워크에서 가져온 데이터를 꺼내서 datas에 담아줌
-        for(Row row : rows){
-            datas.add(row.getFNAME());
-
-            // row를 돌면서 화장실 하나하나에 좌표 생성
-            MarkerOptions marker = new MarkerOptions();  // 좌표를 마커에 담아 줌
-            LatLng tempCount = new LatLng(row.getY_WGS84(), row.getX_WGS84());
-            marker.position(tempCount);
+        for(Row row : items){
+            // row를 돌면서 화장실 하나하나의 좌표를 생성
+            MarkerOptions marker = new MarkerOptions();
+            LatLng tempCoord = new LatLng(row.getY_WGS84(), row.getX_WGS84());
+            marker.position(tempCoord);
             marker.title(row.getFNAME());
 
             myMap.addMarker(marker);
         }
-
-        // 지도 컨트롤
-        LatLng latLng = new LatLng(37.516068, 127.019361);  // 신사동으로 잡아 줌
-        myMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 10));  // 좌표 , 줌 레벨
-
-        // 그리고 adapter를 갱신
-        adapter.notifyDataSetChanged();
+    }
 
 
+    // 총개수를 화면에 출력
+    private void setItemCount(int totalCount){
+        textView.setText("총 개수 : "+ totalCount);
+    }
 
+    // json 스트링을 MyPojo 오브젝트로 변환
+    public MyPojo convertJson(String jsonString){
+        Gson gson = new Gson();  // gson : jsonString을 Domain 폴더 파일들에 맞는 객체로 자동 변환해주는 툴
+        return gson.fromJson(jsonString, MyPojo.class);  // json은 String 형태로 날아옴
     }
 
     GoogleMap myMap;
@@ -146,12 +219,10 @@ public class MainActivity extends AppCompatActivity implements TaskInterface, On
     public void onMapReady(GoogleMap googleMap) {  // google이 알아서 호출해 줌
 
         myMap = googleMap;  // 지도를 컨트롤하다보니 해당 함수에 지도를 불러오는게 없으므로 생성해 줌
-
         // map이 불러와지고 호출
-        setPage(1);
-        setUrl(pageBegin, pageEnd);
-        Remote.newTask(this);
-
-
+//        setPage(1);
+//        setUrl();
+//        Remote.newTask(this);
+        loadPage();
     }
 }
