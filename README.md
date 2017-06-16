@@ -42,3 +42,19 @@ json.변수명[1].서브명
  HttpURLConnection con = (HttpURLConnection)serverUrl.openConnection();
 con.setRequestMethod("GET");
 ```
+
+
+## Gson
+- json의 문자열을 객체로 자동 변환해주는 툴
+
+> app Gradle에 추가 해 줘야 함
+```java
+compile 'com.google.code.gson:gson:2.8.+'
+```
+- 사용법
+```java
+Gson gson = new Gson();
+       // 1 json String을 class로 변환
+       MyPojo mp = gson.fromJson(jsonString, MyPojo.class);
+```
+
